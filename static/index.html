@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RustMyAdmin</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- login view -->
+<div id="login-view" class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">Rust<span>MyAdmin</span></div>
+    <p class="login-sub" data-i18n="基于 Rust axum + sqlx 的 MySQL 管理工具">基于 Rust axum + sqlx 的 MySQL 管理工具</p>
+    <form id="login-form">
+      <label><span data-i18n="主机">主机</span>
+        <input id="li-host" value="127.0.0.1" autocomplete="off">
+      </label>
+      <label><span data-i18n="端口">端口</span>
+        <input id="li-port" placeholder="3306" value="3306" inputmode="numeric">
+      </label>
+      <label><span data-i18n="用户名">用户名</span>
+        <input id="li-user" placeholder="root" autocomplete="off">
+      </label>
+      <label><span data-i18n="密码">密码</span>
+        <input id="li-pass" type="password" placeholder="password">
+      </label>
+      <label class="lang-row"><span data-i18n="语言">语言</span>
+        <select id="li-lang">
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+        </select>
+      </label>
+      <button type="submit" class="btn primary block" id="li-btn" data-i18n="连接">连接</button>
+    </form>
+    <div id="login-error" class="login-error"></div>
+  </div>
+</div>
+
+<!-- main view -->
+<div id="app-view" hidden>
+  <header id="topbar">
+    <div class="brand">Rust<span>MyAdmin</span></div>
+    <div id="crumbs"></div>
+    <nav class="topnav">
+      <button class="btn ghost" data-nav="home" data-i18n="首页">首页</button>
+      <button class="btn ghost" data-nav="sql">SQL</button>
+      <button class="btn ghost" data-nav="users" data-i18n="用户">用户</button>
+      <button class="btn ghost" data-nav="import" data-i18n="导入">导入</button>
+      <button class="btn ghost" data-nav="export" data-i18n="导出">导出</button>
+      <span id="topinfo" class="topinfo"></span>
+      <button class="btn danger-ghost" id="btn-logout" data-i18n="断开">断开</button>
+    </nav>
+  </header>
+  <div id="layout">
+    <nav id="sidebar"><div id="db-list"><div class="side-note" data-i18n="未加载">未加载</div></div></nav>
+    <main id="content"></main>
+  </div>
+</div>
+
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+<script src="/app.js"></script>
+</body>
+</html>
