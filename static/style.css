@@ -92,7 +92,8 @@ body {
 }
 .db-head:hover { background: rgba(255,255,255,.06); }
 .db-head.active { background: rgba(37,99,235,.25); color: #fff; }
-.db-head .arrow { font-size: 10px; width: 12px; transition: transform .15s; color: #94a3b8; }
+.db-head .arrow { font-size: 10px; width: 12px; transition: transform .15s; color: #94a3b8; cursor: pointer; }
+.db-head .arrow:hover { color: #e2e8f0; }
 .db-head.open .arrow { transform: rotate(90deg); }
 .tbl-list { display: none; }
 .tbl-list.open { display: block; }
@@ -120,6 +121,19 @@ body {
 
 /* ---------- 表格 ---------- */
 .grid-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+/* browse page hides its native scrollbar; the sticky proxy bar below the table is the only one */
+.grid-wrap.no-bar { scrollbar-width: none; -ms-overflow-style: none; }
+.grid-wrap.no-bar::-webkit-scrollbar { display: none; }
+
+/* sticky horizontal scrollbar: sticks to the viewport bottom while scrolling long tables */
+.hscroll-sticky { position: sticky; bottom: 0; z-index: 6; height: 0; overflow-x: auto; overflow-y: hidden; }
+.hscroll-sticky.on {
+  height: 14px; background: var(--panel);
+  border: 1px solid var(--border); border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: 0 -3px 8px rgba(0,0,0,.06);
+}
+.hscroll-proxy { height: 1px; }
 table.grid { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 table.grid th, table.grid td {
   border-bottom: 1px solid var(--border); padding: 7px 10px; text-align: left;
@@ -170,15 +184,17 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .inline-form { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
 
 /* ---------- 行编辑模态 ---------- */
-.edit-row-grid { display: grid; grid-template-columns: 1fr; gap: 10px; max-height: 60vh; overflow: auto; padding-right: 6px; }
-.edit-cell { display: grid; grid-template-columns: 150px 1fr 56px; gap: 8px; align-items: start; }
+.edit-row-grid { display: grid; grid-template-columns: 1fr; gap: 10px; max-height: 60vh; overflow-x: hidden; overflow-y: auto; padding-right: 6px; }
+.edit-cell { display: grid; grid-template-columns: 148px 1fr max-content; gap: 6px; align-items: start; }
 .edit-cell .colname { font-size: 12.5px; padding-top: 7px; word-break: break-all; }
 .edit-cell .colname .ctype { color: #94a3b8; font-size: 11px; display: block; }
 .edit-cell textarea, .edit-cell input {
   width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
   font-size: 12.5px; font-family: Consolas, monospace;
 }
-.edit-cell .null-box { padding-top: 7px; font-size: 12px; white-space: nowrap; }
+.edit-cell .null-box { padding-top: 6px; font-size: 12px; white-space: nowrap; }
+.edit-cell .null-box label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+.edit-cell .null-box input[type=checkbox] { margin: 0; }
 .edit-cell .val-wrap { display: flex; gap: 6px; align-items: flex-start; }
 .edit-cell .val-wrap .cell-fn {
   flex: 0 0 148px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
@@ -190,6 +206,18 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   font-size: 12.5px; background: #fff; cursor: pointer;
 }
 .edit-cell .val-wrap .cell-fn:disabled, .edit-cell .val-wrap .cell-inp:disabled { background: #f1f5f9; color: #94a3b8; }
+
+/* ---------- column sort dialog (drag to reorder) ---------- */
+.sort-list { display: flex; flex-direction: column; gap: 6px; max-height: 55vh; overflow-y: auto; padding: 4px; }
+.sort-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 6px; background: #fff;
+  cursor: grab; user-select: none;
+}
+.sort-item:active { cursor: grabbing; }
+.sort-item .drag-handle { color: #94a3b8; font-size: 15px; line-height: 1; }
+.sort-item.dragging { opacity: .4; }
+.sort-item.drag-over { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
 /* ---------- SQL 控制台 ---------- */
 .sql-input { width: 100%; height: 180px; padding: 12px; font-family: Consolas, "Courier New", monospace;

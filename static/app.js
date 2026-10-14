@@ -5,14 +5,22 @@ const $ = (sel, el) => (el || document).querySelector(sel);
 const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel));
 
 /* ---------- i18n ---------- */
+// Tiny cookie helpers (used for language and last connection details).
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]*)"));
+  return m ? decodeURIComponent(m[1]) : "";
+}
+function setCookie(name, value) {
+  document.cookie = name + "=" + encodeURIComponent(value) + ";path=/;max-age=31536000;SameSite=Lax";
+}
 // Language lives in cookie rma_lang (default: en), picked on the login page.
 let LANG = (() => {
-  const m = document.cookie.match(/(?:^|;\s*)rma_lang=(\w+)/);
-  return m && m[1] === "zh" ? "zh" : "en";
+  const v = getCookie("rma_lang");
+  return v === "zh" ? "zh" : "en";
 })();
 function setLang(l) {
   LANG = l;
-  document.cookie = "rma_lang=" + l + ";path=/;max-age=31536000;SameSite=Lax";
+  setCookie("rma_lang", l);
   document.documentElement.lang = l;
   applyStaticLang();
 }
@@ -27,6 +35,7 @@ const DICT = {
     "确定": "OK", "取消": "Cancel", "关闭": "Close", "创建": "Create", "保存": "Save",
     "插入": "Insert", "删除": "Delete", "搜索": "Search", "清除": "Clear", "编辑": "Edit",
     "浏览": "Browse", "结构": "Structure", "操作": "Actions", "加载中...": "Loading...",
+    "刷新": "Refresh",
     "（无）": "(none)", "连接": "Connect", "连接中...": "Connecting...",
     "未选择文件": "No file selected", "清空": "Clear", "改名": "Rename",
     // errors / api layer
@@ -102,12 +111,15 @@ const DICT = {
     "没有修改任何内容": "No changes to save", "没有可插入的字段": "Nothing to insert",
     "自增 ID：{0}": "Last insert ID: {0}",
     // structure page
-    "修改": "Change", "上移": "Up", "下移": "Down", "字段结构": "Column structure",
+    "修改": "Change", "字段结构": "Column structure",
     "主键：{0}": "Primary key: {0}", "（无主键）": "(no primary key)",
     "字段": "Column", "键": "Key", "额外": "Extra", "是": "Yes", "否": "No",
     "新增字段": "Add column", "索引": "Indexes", "创建索引": "Create index",
+    "修改引擎": "Change engine", "修改引擎会重建表（大表可能耗时）": "Changing the engine rebuilds the table (can be slow for large tables).",
+    "排序字段": "Sort columns", "拖动字段行调整顺序，保存后生效": "Drag rows to reorder columns; click Save to apply",
+    "字段顺序已更新": "Column order updated",
     "外键": "Foreign keys", "创建外键": "Create foreign key",
-    "已是第一列": "Already the first column", "已是最后一列": "Already the last column",
+    "已选择 {0} 行": "{0} rows selected",
     "删除字段": "Drop column", "唯一": "Unique", "普通": "Index", "暂无索引": "No indexes",
     "方法": "Method", "删除索引": "Drop index", "暂无外键": "No foreign keys",
     "本表字段": "Column", "引用目标": "Reference", "删除外键": "Drop foreign key",
@@ -145,8 +157,8 @@ const DICT = {
     "每一行是一个字段配对；添加多行即创建复合外键（按行顺序对应）。外键需要 InnoDB 等支持外键的引擎。": "Each row pairs a local column with a referenced column; add rows for a composite foreign key (matched in row order). Requires an FK-capable engine such as InnoDB.",
     // operations tab
     "表操作 · {0}": "Table operations · {0}", "常用维护操作。": "Common maintenance operations.",
-    "表改名": "Rename table", "用 SQL 修改更多": "More via SQL",
-    "导出此表 (sql.zip)": "Export this table (sql.zip)",
+    "表改名": "Rename table",
+    "导出此表结构和数据 (sql.zip)": "Export this table's structure and data (sql.zip)",
     "清空数据（TRUNCATE）": "Empty data (TRUNCATE)", "删除表（DROP）": "Drop table (DROP)",
     "将表 {0} 重命名为": "Rename table {0} to", "请输入表名 {0} 以确认": "Type the table name {0} to confirm",
     // SQL console
@@ -284,7 +296,8 @@ const DYN = [
   [/^索引字段重复：(.+)$/, "Duplicate index column: $1"],
   [/^外键字段重复：(.+)$/, "Duplicate FK column: $1"],
   [/^引用字段重复：(.+)$/, "Duplicate referenced column: $1"],
-  [/^不支持的存储引擎：(.+)$/, "Unsupported storage engine: $1"],
+    [/^不支持的存储引擎：(.+)$/, "Unsupported storage engine: $1"],
+    [/^表 (.+) 引擎已改为 (.+)$/, "Engine of table $1 changed to $2"],
   [/^不支持的字段类型：(.+)$/, "Unsupported column type: $1"],
   [/^不支持的权限：(.+)$/, "Unsupported privilege: $1"],
   [/^外键规则无效：(.+)$/, "Invalid foreign key rule: $1"],
@@ -436,7 +449,8 @@ const apiPost = (p, b) => api("POST", p, b || {});
 
 /* ---------- modals ---------- */
 function closeModal() { const m = $("#modal-root"); m.innerHTML = ""; }
-function openModal(title, bodyEl, footEl) {
+/** Open a modal; optional `width` sets an explicit CSS width on the dialog so body content matches exactly. */
+function openModal(title, bodyEl, footEl, width) {
   const root = $("#modal-root");
   root.innerHTML = "";
   const mask = document.createElement("div");
@@ -447,6 +461,8 @@ function openModal(title, bodyEl, footEl) {
     <div class="modal-body"></div>
     <div class="modal-foot"></div></div>`;
   mask.addEventListener("mousedown", (e) => { if (e.target === mask) closeModal(); });
+  const dlg = $(".modal", mask);
+  if (width) dlg.style.width = width; // CSS max-width:min(860px,92vw) still applies
   $(".modal-body", mask).appendChild(bodyEl);
   if (footEl) $(".modal-foot", mask).appendChild(footEl);
   $(".close", mask).onclick = closeModal;
@@ -508,20 +524,34 @@ function bindLogin() {
   const langSel = $("#li-lang");
   langSel.value = LANG;
   langSel.addEventListener("change", () => setLang(langSel.value));
+  // restore last connection details (host/port/user; the password is never stored)
+  const savedHost = getCookie("rma_host");
+  const savedPort = getCookie("rma_port");
+  const savedUser = getCookie("rma_user");
+  if (savedHost) $("#li-host").value = savedHost;
+  if (savedPort) $("#li-port").value = savedPort;
+  if (savedUser) $("#li-user").value = savedUser;
   $("#login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = $("#li-btn");
     btn.disabled = true;
     btn.textContent = L("连接中...");
+    const host = $("#li-host").value.trim();
+    const port = String(parseInt($("#li-port").value) || 3306);
+    const user = $("#li-user").value.trim();
     try {
       const r = await api("POST", "/login", {
-        host: $("#li-host").value.trim(),
-        port: parseInt($("#li-port").value) || 3306,
-        user: $("#li-user").value.trim(),
+        host,
+        port: parseInt(port),
+        user,
         password: $("#li-pass").value,
       });
       S.token = r.token;
       localStorage.setItem("rma_token", r.token);
+      // remember host/port/user for the next visit (never the password)
+      setCookie("rma_host", host);
+      setCookie("rma_port", port);
+      setCookie("rma_user", user);
       $("#login-error").textContent = "";
       await initApp();
     } catch (err) {
@@ -555,7 +585,8 @@ async function loadSidebar(keepDb) {
     item.dataset.db = db;
     item.innerHTML = `<div class="db-head"><span class="arrow">▶</span><span class="dbname">${esc(db)}</span></div><div class="tbl-list"></div>`;
     const head = $(".db-head", item);
-    head.addEventListener("click", () => {
+    // arrow click toggles the table tree inside the sidebar only
+    const toggleTree = () => {
       const wasOpen = head.classList.contains("open");
       $$(".db-head.open", el).forEach((h) => h.classList.remove("open"));
       $$(".tbl-list.open", el).forEach((t) => { t.classList.remove("open"); t.innerHTML = ""; });
@@ -565,11 +596,11 @@ async function loadSidebar(keepDb) {
         list.classList.add("open");
         list.innerHTML = `<div class="side-note">${L("加载中...")}</div>`;
         loadTablesOf(db, list).catch((e) => (list.innerHTML = `<div class="side-note">${esc(L(e.message))}</div>`));
-        showDb(db);
-      } else {
-        head.classList.remove("open");
       }
-    });
+    };
+    $(".arrow", item).addEventListener("click", (e) => { e.stopPropagation(); toggleTree(); });
+    // clicking the database name always refreshes the main view with its tables
+    head.addEventListener("click", () => showDb(db));
     el.appendChild(item);
   }
   markSidebar();
@@ -679,9 +710,6 @@ async function showDb(db) {
       <td class="row-actions">
         <button class="btn sm" data-browse="${esc(t.name)}">${L("浏览")}</button>
         <button class="btn sm" data-struct="${esc(t.name)}">${L("结构")}</button>
-        <button class="btn sm danger-ghost" data-empty="${esc(t.name)}">${L("清空")}</button>
-        <button class="btn sm danger-ghost" data-dropt="${esc(t.name)}">${L("删除")}</button>
-        <button class="btn sm" data-renamet="${esc(t.name)}">${L("改名")}</button>
       </td>
     </tr>`).join("");
   c.innerHTML = `
@@ -701,17 +729,6 @@ async function showDb(db) {
     </div>`;
   $$("[data-browse]", c).forEach((b) => (b.onclick = () => showTable(db, b.dataset.browse, "browse")));
   $$("[data-struct]", c).forEach((b) => (b.onclick = () => showTable(db, b.dataset.struct, "structure")));
-  $$("[data-renamet]", c).forEach((b) => (b.onclick = () => renameTableFlow(db, b.dataset.renamet, () => showDb(db))));
-  $$("[data-empty]", c).forEach((b) => (b.onclick = async () => {
-    const t = b.dataset.empty;
-    if (!(await confirmModal(L("清空表"), Lf("确定要清空表 {0} 的全部数据吗？此操作不可恢复。", t), true))) return;
-    try { const r = await apiPost(`/databases/${encodeURIComponent(db)}/tables/${encodeURIComponent(t)}/truncate`); toast(r.message, "ok"); showDb(db); } catch (e) { toast(e.message, "err"); }
-  }));
-  $$("[data-dropt]", c).forEach((b) => (b.onclick = async () => {
-    const t = b.dataset.dropt;
-    if (!(await confirmModal(L("删除表"), Lf("确定要删除表 {0} 吗？表结构与数据都会被删除，不可恢复。", t), true))) return;
-    try { const r = await apiPost(`/databases/${encodeURIComponent(db)}/tables/${encodeURIComponent(t)}/drop`); toast(r.message, "ok"); showDb(db); loadSidebar(); } catch (e) { toast(e.message, "err"); }
-  }));
   $("#db-newtable").onclick = () => newTableModal(db);
   $("#db-export").onclick = () => showExport(db);
   $("#db-import").onclick = () => showImport(db);
@@ -747,7 +764,7 @@ function newTableModal(db) {
     <div class="inline-form" style="margin-bottom:14px;">
       <div class="field"><label>${L("表名")}</label><input type="text" id="ct-name" style="width:180px" placeholder="new_table"></div>
       <div class="field"><label>${L("存储引擎")}</label><select id="ct-engine" style="width:120px">
-        <option>InnoDB</option><option>MyISAM</option><option>MEMORY</option><option>Aria</option></select></div>
+        <option>InnoDB</option><option>MyISAM</option><option>MEMORY</option><option>Aria</option><option>CSV</option></select></div>
     </div>
     <div class="ct-head">
       <span>${L("字段名")}</span><span>${L("类型")}</span><span>${L("长度/值")}</span><span>${L("默认值")}</span>
@@ -927,6 +944,7 @@ async function renderBrowse(db, table, tc) {
   tc.innerHTML = `
     <div class="panel">
       <div class="toolbar">
+        <button class="btn" id="br-refresh" title="${L("刷新")}">⟳ ${L("刷新")}</button>
         <button class="btn primary" id="br-insert">${L("新增一行")}</button>
         <button class="btn danger" id="br-del-sel" disabled>${L("删除选中行")}</button>
         <span class="spacer"></span>
@@ -936,12 +954,32 @@ async function renderBrowse(db, table, tc) {
         <span class="muted">${statusLine}</span>
       </div>
       ${pager}
-      <div class="grid-wrap"><table class="grid">
+      <div class="grid-wrap no-bar"><table class="grid">
         <thead><tr><th><input type="checkbox" id="check-all"></th>${headCells}<th>${L("操作")}</th></tr></thead>
         <tbody>${bodyRows || `<tr><td colspan="${cols.length + 2}" class="muted">${L("无数据")}</td></tr>`}</tbody>
       </table></div>
+      <div class="hscroll-sticky"><div class="hscroll-proxy"></div></div>
       ${pager}
     </div>`;
+
+  // sticky bottom scrollbar: mirror the table's horizontal scroll both ways
+  const wrap = $(".grid-wrap", tc);
+  const stickyBar = $(".hscroll-sticky", tc);
+  const proxy = $(".hscroll-proxy", tc);
+  const syncBar = () => {
+    const need = wrap.scrollWidth > wrap.clientWidth + 1;
+    stickyBar.classList.toggle("on", need);
+    if (need) {
+      proxy.style.width = wrap.scrollWidth + "px";
+      stickyBar.scrollLeft = wrap.scrollLeft;
+    }
+  };
+  stickyBar.addEventListener("scroll", () => { wrap.scrollLeft = stickyBar.scrollLeft; });
+  wrap.addEventListener("scroll", () => { stickyBar.scrollLeft = wrap.scrollLeft; });
+  if (S._hscrollResize) window.removeEventListener("resize", S._hscrollResize);
+  S._hscrollResize = syncBar;
+  window.addEventListener("resize", syncBar);
+  syncBar();
 
   const refresh = () => renderBrowse(db, table, tc);
   $$("th.sortable", tc).forEach((th) => (th.onclick = () => {
@@ -968,6 +1006,7 @@ async function renderBrowse(db, table, tc) {
   }));
   $$("[data-edit]", tc).forEach((b) => (b.onclick = () => editRowModal(db, table, parseInt(b.dataset.edit), refresh)));
   $("#br-insert").onclick = () => insertRowModal(db, table, refresh);
+  $("#br-refresh").onclick = () => refresh();
   $("#br-del-sel").onclick = async () => {
     const keys = $$(".row-check", tc).filter((ck) => ck.checked).map((ck) => S.rowKeys[parseInt(ck.closest("tr").dataset.ri)]);
     if (!keys.length || !(await confirmModal(Lf("删除 {0} 行", keys.length), Lf("确定要删除选中的 {0} 行吗？", keys.length), true))) return;
@@ -998,8 +1037,8 @@ async function renderBrowse(db, table, tc) {
 function buildRowForm(columns, values) {
   const wrap = document.createElement("div");
   wrap.className = "edit-row-grid";
-  // wide enough that the NULL checkbox sits next to the input without horizontal scrolling
-  wrap.style.cssText = "width:min(760px,94vw);";
+  // width follows the dialog body exactly (dialog gets an explicit width) — no mismatch, no scrollbar
+  wrap.style.cssText = "width:100%;";
   for (const col of columns) {
     const isAuto = /auto_increment/i.test(col.extra || "");
     const cell = document.createElement("div");
@@ -1022,9 +1061,22 @@ function buildRowForm(columns, values) {
       }
       showNull = col.default == null && col.nullable;
     }
-    const enumVals = (col.dataType || "").toLowerCase() === "enum" ? parseEnumList(col.type) : null;
-    const longText = !enumVals && (/text|blob|binary|json/i.test(col.dataType) || String(showVal).length > 80);
-    const inputTag = longText ? "textarea" : 'input type="text"';
+    const dtLow = (col.dataType || "").toLowerCase();
+    const enumVals = dtLow === "enum" ? parseEnumList(col.type) : null;
+    // native date/time widgets make picking values mouse-friendly
+    const isDateCtl = dtLow === "date";
+    const isDtCtl = dtLow === "datetime" || dtLow === "timestamp";
+    const isTimeCtl = dtLow === "time";
+    const longText = !enumVals && !isDateCtl && !isDtCtl && !isTimeCtl && (/text|blob|binary|json/i.test(col.dataType) || String(showVal).length > 80);
+    const inputTag = longText
+      ? "textarea"
+      : isDateCtl
+        ? 'input type="date"'
+        : isDtCtl
+          ? 'input type="datetime-local" step="1"'
+          : isTimeCtl
+            ? 'input type="time" step="1"'
+            : 'input type="text"';
     const fnSel = fnList.length
       ? `<select class="cell-fn" title="${L("函数预设")}"><option value="">${L("函数…")}</option>${fnList.map((f) => `<option value="${f}"${presetFn === f ? " selected" : ""}>${f}</option>`).join("")}</select>`
       : "";
@@ -1037,7 +1089,12 @@ function buildRowForm(columns, values) {
       <div class="null-box"><label><input type="checkbox" class="cell-null" ${showNull ? "checked" : ""}>NULL</label></div>`;
     const inp = $(".cell-inp", cell);
     const fnBox = $(".cell-fn", cell);
-    if (!longText && !enumVals) inp.value = showVal;
+    if (!longText && !enumVals) {
+      let v = showVal;
+      // "YYYY-MM-DD HH:MM:SS" → datetime-local widget format "YYYY-MM-DDTHH:MM:SS"
+      if (isDtCtl && v) v = String(v).replace(" ", "T");
+      inp.value = v;
+    }
     const syncDisabled = () => {
       inp.disabled = $(".cell-null", cell).checked || (fnBox ? !!fnBox.value : false);
     };
@@ -1072,6 +1129,12 @@ function readRowForm(wrap, columns) {
     } else {
       let v = inp.value;
       if (col.binary && v.trim().startsWith("0x")) v = v.trim().slice(2);
+      // widget format back to MySQL: "YYYY-MM-DDTHH:MM" → "YYYY-MM-DD HH:MM:SS"
+      const dtLow = (col.dataType || "").toLowerCase();
+      if ((dtLow === "datetime" || dtLow === "timestamp") && v) {
+        v = v.replace("T", " ");
+        if (v.length === 16) v += ":00";
+      }
       out.push({ col: col.name, value: v, is_null: false, is_expr: false });
     }
     out[out.length - 1]._auto = isAuto;
@@ -1093,7 +1156,7 @@ function editRowModal(db, table, ri, onDone) {
   });
   const foot = document.createElement("div");
   foot.innerHTML = `<button class="btn primary">${L("保存")}</button><button class="btn">${L("取消")}</button>`;
-  openModal(Lf("编辑行 · {0}.{1}", db, table), wrap, foot);
+  openModal(Lf("编辑行 · {0}.{1}", db, table), wrap, foot, "720px");
   $(".btn.primary", foot).onclick = async () => {
     const changesAll = readRowForm(wrap, meta.columns);
     // submit only fields that changed (or switched to/from NULL)
@@ -1121,7 +1184,7 @@ function insertRowModal(db, table, onDone) {
   const wrap = buildRowForm(meta.columns, null);
   const foot = document.createElement("div");
   foot.innerHTML = `<button class="btn primary">${L("插入")}</button><button class="btn">${L("取消")}</button>`;
-  openModal(Lf("新增行 · {0}.{1}", db, table), wrap, foot);
+  openModal(Lf("新增行 · {0}.{1}", db, table), wrap, foot, "720px");
   $(".btn.primary", foot).onclick = async () => {
     const valuesAll = readRowForm(wrap, meta.columns);
     // skip empty auto-increment / generated fields
@@ -1395,6 +1458,74 @@ function addFkModal(db, table, columns, refresh, reloadFks) {
   };
 }
 
+/** Draggable column-order dialog: drag rows, then Save applies FIRST/AFTER moves one by one */
+function sortColumnsModal(db, table, columns, onDone) {
+  const list = document.createElement("div");
+  list.className = "sort-list";
+  list.innerHTML = columns.map((c) => `
+    <div class="sort-item" draggable="true" data-col="${esc(c.name)}">
+      <span class="drag-handle">⠿</span><b>${esc(c.name)}</b><span class="muted">${esc(c.type)}</span>
+    </div>`).join("");
+  let dragEl = null;
+  list.addEventListener("dragstart", (e) => {
+    dragEl = e.target.closest(".sort-item");
+    if (!dragEl) return;
+    dragEl.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", ""); } catch (err) {}
+  });
+  list.addEventListener("dragend", () => {
+    if (dragEl) dragEl.classList.remove("dragging");
+    $$(".sort-item", list).forEach((el) => el.classList.remove("drag-over"));
+    dragEl = null;
+  });
+  list.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    const over = e.target.closest(".sort-item");
+    $$(".sort-item", list).forEach((el) => el.classList.remove("drag-over"));
+    if (over && dragEl && over !== dragEl) over.classList.add("drag-over");
+  });
+  list.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const over = e.target.closest(".sort-item");
+    if (!over || !dragEl || over === dragEl) return;
+    const rect = over.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    list.insertBefore(dragEl, after ? over.nextSibling : over);
+  });
+  const box = document.createElement("div");
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.style.marginBottom = "8px";
+  hint.textContent = L("拖动字段行调整顺序，保存后生效");
+  box.appendChild(hint);
+  box.appendChild(list);
+  const foot = document.createElement("div");
+  foot.innerHTML = `<button class="btn primary">${L("保存")}</button><button class="btn">${L("取消")}</button>`;
+  openModal(Lf("排序字段 · {0}", table), box, foot, "480px");
+  foot.querySelectorAll(".btn")[1].onclick = closeModal;
+  foot.querySelector(".primary").onclick = async () => {
+    const order = $$(".sort-item", list).map((el) => el.dataset.col);
+    const unchanged = order.length === columns.length && order.every((c, i) => c === columns[i].name);
+    if (unchanged) { closeModal(); return; }
+    const btn = foot.querySelector(".primary");
+    btn.disabled = true;
+    try {
+      // first column goes FIRST, each next one AFTER the previous
+      for (let i = 0; i < order.length; i++) {
+        const position = i === 0 ? "first" : order[i - 1];
+        await apiPost(`/databases/${encodeURIComponent(db)}/tables/${encodeURIComponent(table)}/columns/${encodeURIComponent(order[i])}/move`, { position });
+      }
+      toast(L("字段顺序已更新"), "ok");
+      closeModal();
+      if (onDone) onDone();
+    } catch (e) {
+      btn.disabled = false;
+      toast(e.message, "err");
+    }
+  };
+}
+
 async function renderStructure(db, table, tc) {
   tc.innerHTML = `<div class="panel">${L("加载中...")}</div>`;
   let r;
@@ -1411,14 +1542,14 @@ async function renderStructure(db, table, tc) {
       <td>${c.default === null ? '<span class="muted">NULL</span>' : esc(c.default)}</td>
       <td class="row-actions">
         <button class="btn sm" data-edit-col="${esc(c.name)}">${L("修改")}</button>
-        <button class="btn sm" data-up-col="${esc(c.name)}">${L("上移")}</button>
-        <button class="btn sm" data-down-col="${esc(c.name)}">${L("下移")}</button>
         <button class="btn sm danger-ghost" data-drop-col="${esc(c.name)}">${L("删除")}</button>
       </td>
     </tr>`).join("");
   tc.innerHTML = `
     <div class="panel">
-      <h2>${L("字段结构")}${r.primaryKey.length ? ` <span class="muted">${Lf("主键：{0}", esc(r.primaryKey.join(", ")))}</span>` : ` <span class="muted">${L("（无主键）")}</span>`}</h2>
+      <h2>${L("字段结构")}${r.primaryKey.length ? ` <span class="muted">${Lf("主键：{0}", esc(r.primaryKey.join(", ")))}</span>` : ` <span class="muted">${L("（无主键）")}</span>`}
+        <span class="spacer"></span>${r.engine ? `<span class="muted">${L("引擎")}：${esc(r.engine)}</span>` : ""}
+        <button class="btn" id="st-sort">${L("排序字段")}</button></h2>
       <div class="grid-wrap"><table class="grid">
         <thead><tr><th>${L("字段")}</th><th>${L("类型")}</th><th>${L("可空")}</th><th>${L("键")}</th><th>${L("额外")}</th><th>${L("默认值")}</th><th>${L("操作")}</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
@@ -1451,26 +1582,7 @@ async function renderStructure(db, table, tc) {
       </table></div>
     </div>`;
   const refresh = () => renderStructure(db, table, tc);
-  const moveCol = async (col, position) => {
-    try {
-      const res = await apiPost(`/databases/${encodeURIComponent(db)}/tables/${encodeURIComponent(table)}/columns/${encodeURIComponent(col)}/move`, { position });
-      toast(res.message, "ok");
-      refresh();
-    } catch (e) { toast(e.message, "err"); }
-  };
-  $$("[data-up-col]", tc).forEach((b) => (b.onclick = () => {
-    const col = b.dataset.upCol;
-    const i = r.columns.findIndex((c) => c.name === col);
-    if (i <= 0) { toast(L("已是第一列"), "err"); return; }
-    // move up one slot: place AFTER the column two slots above; FIRST when already second
-    moveCol(col, i === 1 ? "first" : r.columns[i - 2].name);
-  }));
-  $$("[data-down-col]", tc).forEach((b) => (b.onclick = () => {
-    const col = b.dataset.downCol;
-    const i = r.columns.findIndex((c) => c.name === col);
-    if (i < 0 || i >= r.columns.length - 1) { toast(L("已是最后一列"), "err"); return; }
-    moveCol(col, r.columns[i + 1].name);
-  }));
+  $("#st-sort").onclick = () => sortColumnsModal(db, table, r.columns, refresh);
   $$("[data-edit-col]", tc).forEach((b) => (b.onclick = () => {
     const col = b.dataset.editCol;
     const meta = r.columns.find((c) => c.name === col);
@@ -1582,6 +1694,29 @@ function renderSqlTab(db, table, tc) {
 }
 
 /* ---------- table operations ---------- */
+/** Storage engine dialog (used from the table operations page) */
+function changeEngineModal(db, table, currentEngine, onDone) {
+  const list = ["InnoDB", "MyISAM", "MEMORY", "Aria", "CSV"];
+  const cur = (currentEngine || "").toLowerCase();
+  const box = document.createElement("div");
+  box.innerHTML = `
+    <div class="field"><label>${L("存储引擎")}</label>
+      <select id="eng-sel">${list.map((e) => `<option value="${e}"${cur === e.toLowerCase() ? " selected" : ""}>${e}</option>`).join("")}</select></div>
+    <div class="hint">${L("修改引擎会重建表（大表可能耗时）")}</div>`;
+  const foot = document.createElement("div");
+  foot.innerHTML = `<button class="btn primary">${L("保存")}</button><button class="btn">${L("取消")}</button>`;
+  openModal(Lf("修改引擎 · {0}", table), box, foot, "420px");
+  foot.querySelector(".primary").onclick = async () => {
+    try {
+      const res = await apiPost(`/databases/${encodeURIComponent(db)}/tables/${encodeURIComponent(table)}/engine`, { engine: $("#eng-sel").value });
+      toast(res.message, "ok");
+      closeModal();
+      if (onDone) onDone();
+    } catch (e) { toast(e.message, "err"); }
+  };
+  foot.querySelectorAll(".btn")[1].onclick = closeModal;
+}
+
 function renderOperations(db, table, tc) {
   tc.innerHTML = `
     <div class="panel"><h2>${Lf("表操作 · {0}", esc(table))}</h2>
@@ -1589,15 +1724,20 @@ function renderOperations(db, table, tc) {
       <div class="toolbar" style="flex-direction:column;align-items:flex-start;gap:10px">
         <div>
           <button class="btn" id="op-rename">${L("表改名")}</button>
-          <button class="btn" id="op-sql">${L("用 SQL 修改更多")}</button>
-          <button class="btn" id="op-export">${L("导出此表 (sql.zip)")}</button>
+          <button class="btn" id="op-engine">${L("修改引擎")}</button>
+          <button class="btn" id="op-export">${L("导出此表结构和数据 (sql.zip)")}</button>
           <button class="btn danger-ghost" id="op-truncate">${L("清空数据（TRUNCATE）")}</button>
           <button class="btn danger-ghost" id="op-drop">${L("删除表（DROP）")}</button>
         </div>
       </div>
     </div>`;
   $("#op-rename").onclick = () => renameTableFlow(db, table, () => showTable(db, S.table, "operations"));
-  $("#op-sql").onclick = () => showTable(db, table, "sql");
+  $("#op-engine").onclick = async () => {
+    try {
+      const st = await apiGet(`/databases/${encodeURIComponent(db)}/tables/${encodeURIComponent(table)}/structure`);
+      changeEngineModal(db, table, st.engine, () => renderOperations(db, table, tc));
+    } catch (e) { toast(e.message, "err"); }
+  };
   $("#op-export").onclick = async () => {
     try {
       await downloadExport(db, [table], `${db}_${table}`);

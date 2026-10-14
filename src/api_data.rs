@@ -362,6 +362,37 @@ pub struct RenameReq {
     pub to: String,
 }
 
+#[derive(Deserialize)]
+pub struct EngineReq {
+    pub engine: String,
+}
+
+/// Change a table's storage engine (whitelisted, see ENGINES)
+pub async fn change_engine(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path((db, table)): Path<(String, String)>,
+    Json(req): Json<EngineReq>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let sess = state.auth(&headers).await?;
+    check_ident(&db, "数据库")?;
+    check_ident(&table, "数据表")?;
+    let engine_lc = req.engine.to_ascii_lowercase();
+    if !ENGINES.iter().any(|e| e.to_ascii_lowercase() == engine_lc) {
+        return Err(ApiError::bad(format!("不支持的存储引擎：{}", req.engine)));
+    }
+    sess.raw_exec_ok(format!(
+        "ALTER TABLE {} ENGINE={}",
+        qualify(&db, &table),
+        engine_lc
+    ))
+    .await?;
+    Ok(Json(json!({
+        "ok": true,
+        "message": format!("表 {} 引擎已改为 {}", table, req.engine)
+    })))
+}
+
 pub async fn rename_table(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

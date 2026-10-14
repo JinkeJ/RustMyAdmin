@@ -266,6 +266,17 @@ pub async fn table_structure(
         return Err(ApiError::not_found(format!("表 {} 不存在或无权访问", table)));
     }
     let pk = primary_key(&sess, &db, &table).await?;
+    // current storage engine (may be NULL for views)
+    let engine: Option<String> = sess
+        .raw_rows(format!(
+            "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = {} AND TABLE_NAME = {}",
+            sql_string_lit(&db),
+            sql_string_lit(&table)
+        ))
+        .await?
+        .first()
+        .and_then(|r| r.try_get::<Option<String>, _>("ENGINE").ok())
+        .flatten();
     let columns: Vec<serde_json::Value> = cols
         .iter()
         .map(|c| {
@@ -282,5 +293,5 @@ pub async fn table_structure(
             })
         })
         .collect();
-    Ok(Json(json!({ "database": db, "table": table, "columns": columns, "primaryKey": pk })))
+    Ok(Json(json!({ "database": db, "table": table, "columns": columns, "primaryKey": pk, "engine": engine })))
 }

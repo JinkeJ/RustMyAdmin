@@ -24,14 +24,24 @@ const STYLE_CSS: &str = include_str!("../static/style.css");
 
 async fn serve_js() -> Response {
     (
-        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "application/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
         APP_JS,
     )
         .into_response()
 }
 
 async fn serve_css() -> Response {
-    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], STYLE_CSS).into_response()
+    (
+        [
+            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        STYLE_CSS,
+    )
+        .into_response()
 }
 
 fn api_routes() -> Router<Arc<AppState>> {
@@ -77,6 +87,10 @@ fn api_routes() -> Router<Arc<AppState>> {
         .route(
             "/databases/{db}/tables/{table}/rename",
             post(api_data::rename_table),
+        )
+        .route(
+            "/databases/{db}/tables/{table}/engine",
+            post(api_data::change_engine),
         )
         .route(
             "/databases/{db}/tables/{table}/columns/{col}/rename",
